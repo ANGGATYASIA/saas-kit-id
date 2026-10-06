@@ -1,0 +1,44 @@
+# saas-kit-id
+
+Next.js 16 SaaS boilerplate with Indonesian payments (Midtrans & Xendit).
+Clone → add keys → sell paid plans in rupiah, without Stripe.
+
+## Stack
+
+Next.js 16 (App Router) + TypeScript, Tailwind CSS v4, shadcn/ui, Better Auth,
+PostgreSQL (own database), Drizzle ORM, Resend + React Email, PostHog, Sentry.
+
+## Key files
+
+- `lib/payments/types.ts` — PaymentProvider interface: createCheckout,
+  verifyWebhook, normalizeStatus.
+- `lib/payments/midtrans.ts` — Midtrans Snap checkout, SHA512 signature check.
+- `lib/payments/xendit.ts` — Xendit invoice checkout, x-callback-token check.
+- `lib/payments/plans.ts` — single source of truth for plans/prices
+  (Starter Rp49.000, Pro Rp149.000, 30 days each).
+- `app/api/checkout/route.ts` — creates a transaction, returns provider URL.
+- `app/api/webhooks/midtrans/route.ts`, `app/api/webhooks/xendit/route.ts`
+  — verified, idempotent webhook handlers (dedupe on provider + event_id).
+- `lib/db/entitlements.ts` — grant/extend/check subscription access.
+- `app/api/cron/reminders/route.ts` — daily expiry reminders (CRON_SECRET).
+- `emails/` — welcome, payment-success, expiry-reminder (React Email).
+- `e2e/` — verify-payments.ts (24 checks), verify-db.ts (23 asserts via
+  PGlite), sandbox-manual.md (Midtrans sandbox + Xendit test mode steps).
+
+## How payments work
+
+Checkout creates a pending transaction with a server-side price, then hands
+the user to Snap/Xendit. Webhooks verify the signature first, then update the
+transaction (forward-only: pending → settlement, never backwards), grant the
+entitlement, and send a receipt email. Xendit sends one callback per status
+change under the same invoice id, so the dedupe key is `id:status`.
+
+Billing is pay-per-period (30 days) + reminder emails — not auto-recurring.
+Card recurring via Midtrans Subscription API is not included.
+
+## Setup
+
+cp .env.example .env → fill DATABASE_URL, BETTER_AUTH_SECRET → npx
+drizzle-kit migrate → npm run db:seed → npm run dev. Sandbox payments:
+MIDTRANS_IS_PRODUCTION=false with sandbox keys; Xendit dashboard in Test
+mode. Checks: npm run test:payments, npm run test:db.
